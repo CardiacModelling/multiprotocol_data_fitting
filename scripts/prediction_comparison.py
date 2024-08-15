@@ -215,7 +215,7 @@ def main():
     for ax in axs[-1, :].flatten():
         ax.set_xlabel(r'$t$ (ms)')
 
-    axs[0, 0].set_ylabel(r'$V_\mathrm{m}$ (mV)')
+    axs[0, 0].set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
 
     # Staircase protocol, predictions from each model
     protocol = 'staircaseramp1'
@@ -279,6 +279,9 @@ def main():
                                args.reversal, protocol_dict,
                                data, Vcmd,
                                label=data_label)
+        # Normalise prediction
+        pred = pred / np.sqrt(np.mean(pred**2))
+
         axs[2, 0].plot(times*1e-3, pred, label=well, ls=linestyle_cycler[i],
                        lw=.75, alpha=.5)
 
@@ -287,13 +290,15 @@ def main():
     for ax in axs.flatten():
         ax.spines[['top', 'right']].set_visible(False)
 
-    for ax in axs[1:, 0].flatten():
-        ax.set_ylabel(r'$I_{\mathrm{Kr}}$ (pA)')
+    # for ax in axs[1:, 0].flatten():
+    #     ax.set_ylabel(r'$I_{\mathrm{Kr}}$ (pA)')
+    axs[1, 0].set_ylabel(r'$I_{\mathrm{Kr}}$ (pA)')
+    axs[2, 0].set_ylabel(r'$I_{\mathrm{Kr}}$ (normalised)')
 
     for ax in axs[-1, :].flatten():
         ax.set_xlabel(r'$t$ (ms)')
 
-    axs[0, 0].set_ylabel(r'$V_\mathrm{m}$ (mV)')
+    axs[0, 0].set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
 
     # longap protocol, predictions from each model's staircase estimates
     protocol = 'longap'
@@ -359,19 +364,26 @@ def main():
                                data, Vcmd,
                                label=data_label)
 
+        # Normalise prediction
+        pred = pred / np.sqrt(np.mean(pred**2))
+
         axs[2, 1].plot(times*1e-3, pred, label=well, ls=linestyle_cycler[i],
                        lw=.75, alpha=.5)
 
     ylims = np.vstack([ax.get_ylim() for ax in axs[1:, 0].flatten()])
-    for ax in axs[1:, 0]:
-        ax.set_ylim(ylims[:, 0].min(), ylims[:, 1].max())
+
+    axs[1, 0].set_ylim(ylims[:, 0].min(), ylims[:, 1].max())
 
     ylims = np.vstack([ax.get_ylim() for ax in axs[1:, 1].flatten()])
-    for ax in axs[1:, 1]:
-        ax.set_ylim(ylims[:, 0].min(), ylims[:, 1].max())
+    axs[1, 1].set_ylim(ylims[:, 0].min(), ylims[:, 1].max())
 
     axs[1, 0].legend(fontsize=8)
-    axs[2, 0].legend(ncol=3, fontsize=8)
+    axs[2, 0].legend(ncol=2, fontsize=8)
+
+    fig.align_ylabels(axs[:, 0])
+
+    for ax in axs[:-1, :].flatten():
+        ax.set_xticklabels([])
 
     fig.savefig(os.path.join(output_dir, "prediction_comparison"))
 

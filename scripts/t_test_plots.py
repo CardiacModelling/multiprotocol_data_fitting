@@ -212,7 +212,7 @@ def setup_axes(fig, no_protocols):
         ax.set_xticklabels([0, r'$t_\text{end}$'])
 
     for ax in axs[:, 0]:
-        ax.set_ylabel(r'$V$ (mV)')
+        ax.set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
 
     return axs.flatten(), cbar_ax
 
@@ -274,6 +274,7 @@ def plot_fitting_z_scores(sweep, fitting_case, params_df, protocols,
 
         axs, cbar_ax = setup_axes(fig, no_protocols)
         for ax, protocol in zip(axs, protocol_order):
+            ax.set_title(relabel_dict[protocol])
             desc, times = protocol_dict[protocol]
             voltages = np.array([v_func(t, protocol_description=desc) for t in times])
             xmin, xmax = (0, 1)
@@ -301,9 +302,8 @@ def plot_fitting_z_scores(sweep, fitting_case, params_df, protocols,
                 # Grey out axes with no values
                 ax.set_facecolor((105/256, 105/256, 105/256, .5))
 
-            ax.set_title(relabel_dict[protocol])
         if mode == 'prediction':
-            label = r'$Z_\text{T}$'
+            label = r'$T$'
         else:
             label = r'$\frac{1}{\hat\sigma}(y_i - z_i)$'
         fig.colorbar(im, cax=cbar_ax, shrink=.75, orientation='horizontal',
@@ -318,6 +318,7 @@ def plot_fitting_z_scores(sweep, fitting_case, params_df, protocols,
 
     axs, cbar_ax = setup_axes(fig, no_protocols)
     for ax, protocol in zip(axs, protocol_order):
+        ax.set_title(relabel_dict[protocol])
         desc, times = protocol_dict[protocol]
         voltages = np.array([v_func(t, protocol_description=desc) for t in times])
         spike_times, spike_indices = \
@@ -349,7 +350,6 @@ def plot_fitting_z_scores(sweep, fitting_case, params_df, protocols,
         else:
             # Grey out axes with no values
             ax.set_facecolor((105/256, 105/256, 105/256, .5))
-        ax.set_title(relabel_dict[protocol])
 
     fig.colorbar(im, cax=cbar_ax, shrink=.75, orientation='horizontal',
                  norm=SymLogNorm(symlogthresh, vmin=vmin, vmax=vmax),
@@ -464,7 +464,7 @@ def setup_axes(fig, no_protocols):
         ax.set_yticks([])
 
     for ax in axs[:, 0]:
-        ax.set_ylabel(r'$V$ (mV)')
+        ax.set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
 
     return axs.flatten(), cbar_ax
 

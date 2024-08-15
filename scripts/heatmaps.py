@@ -88,7 +88,7 @@ def main():
     parser.add_argument('--removal_duration', type=float, default=5.0)
     parser.add_argument('--experiment_name', '-e', default='newtonrun4')
     parser.add_argument('--validation_protocols', default=['longap'], nargs='+')
-    parser.add_argument('--figsize', '-f', nargs=2, type=float, default=[5.54, 7.2])
+    parser.add_argument('--figsize', '-f', nargs=2, type=float, default=[5.54, 8])
     parser.add_argument('--fig_title', '-t', default='')
     parser.add_argument('--nolegend', action='store_true')
     parser.add_argument('--dpi', '-d', default=500, type=int)
@@ -272,7 +272,7 @@ def main():
 
         fitting_protocol, validation_protocol, fit_sweep, predict_sweep\
             = worst_prediction
- 
+
         voltage_axs[0].set_title(get_protocol_label(protocol_order, validation_protocol,
                                                     fit_sweep))
 
@@ -430,7 +430,7 @@ def main():
             + r'$\mathcal{E}_{\mathrm{fit}} = $' f"{mean_training_score:.2f}" + \
             ',\n' r'$\mathcal{E}_{\mathrm{predict}} = $' + f"{mean_validation_score:.2f}"
 
-        best_ax.set_title(best_well_title)
+        best_ax.set_title(best_well_title, fontsize=args.fontsize)
 
         mean_training_score = prediction_df[(prediction_df.fitting_protocol == prediction_df.validation_protocol)\
                                      & (prediction_df.well == worst_well)]['n_score'].values.astype(np.float64).mean()
@@ -443,14 +443,21 @@ def main():
             + r'$\mathcal{E}_{\mathrm{fit}} = $' f"{mean_training_score:.2f}" + \
             ',\n' r'$\mathcal{E}_{\mathrm{predict}} = $' + f"{mean_validation_score:.2f}"
 
-        worst_ax.set_title(worst_well_title)
+        worst_ax.set_title(worst_well_title, fontsize=args.fontsize)
         # worst_ax.axis('off')
         # worst_ax.set_xticks([])
         worst_ax.set_yticks([])
+        worst_ax.set_ylabel('')
         best_ax.tick_params(axis='x', labelrotation=90.0)
         worst_ax.tick_params(axis='x', labelrotation=90.0)
 
-        fig.savefig(os.path.join(output_dir, f"best_worst_{case}_{model_class}_heatmap_best_worst"))
+        fig.align_ylabels(list(prediction_axs) + list(voltage_axs) \
+                          + [best_ax])
+
+        voltage_axs[0].set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
+        voltage_axs[1].set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
+
+        fig.savefig(os.path.join(output_dir, f"best_worst_{case}_{model_class}_heatmap"))
         fig.clf()
 
     fig = plt.figure(figsize=args.figsize, constrained_layout=True)
@@ -492,10 +499,23 @@ def main():
         individual_fig.savefig(os.path.join(output_dir,
                                             f"average_{case}_{model_class}_heatmap"))
 
+    for ax in model_axs[:-1, :].flatten():
+        ax.set_xlabel(None)
+        ax.get_xaxis().set_visible(False)
+
+    for ax in model_axs[-1, :].flatten():
+        ax.tick_params('x', labelrotation=90)
+
+    for ax in model_axs[:, 1:].flatten():
+        ax.get_yaxis().set_visible(False)
+
+    # Adjust the padding of the layout engine to remove any additional space
+    fig.get_layout_engine().set(w_pad=0 / 72, h_pad=0 / 72, hspace=0, wspace=0)
+
     fig.savefig(os.path.join(output_dir, "averaged_well_heatmaps"))
     fig.clf()
 
-    comparison_fig = plt.figure(figsize=[args.figsize[0], 6.5])
+    comparison_fig = plt.figure(figsize=[args.figsize[0], 6.5], constrained_layout=True)
     # Plot Case III only
     model_axs, colour_bar_ax = setup_grid_single_case(comparison_fig, args)
     done_colour_bar = False
@@ -533,7 +553,8 @@ def main():
 
         model_name = relabel_models_dict[model_class]
         ax.set_title(r'\textbf{' + model_name + r'}' + "\n"+ r'$\mathcal{E}_{\mathrm{fit}} = $' f"{mean_training_score:.2f}" + \
-                     ",\n" r'$\mathcal{E}_{\mathrm{predict}} = $' + f"{mean_validation_score:.2f}")
+                     ',\n' r'$\mathcal{E}_{\mathrm{predict}} = $' + f"{mean_validation_score:.2f}",
+                     fontsize=args.fontsize)
 
 
         validation_protocol = 'longap'
@@ -541,11 +562,14 @@ def main():
 
     colour_bar_ax.set_title('NRMSE')
 
-    for ax in model_axs[1:]:
-        ax.set_xticklabels([])
-        ax.set_xticklabels([])
-        ax.set_xlabel('')
-        ax.set_ylabel('')
+    for ax in model_axs[:2]:
+        ax.get_xaxis().set_visible(False)
+
+    for ax in model_axs[2:]:
+        ax.tick_params('x', labelrotation=90)
+
+    for ax in model_axs[1::2]:
+        ax.get_yaxis().set_visible(False)
 
     comparison_fig.savefig(os.path.join(output_dir, 'Case0c_heatmap_comparison'))
     comparison_fig.clf()
@@ -585,11 +609,18 @@ def main():
                        cbar=True,
                        cbar_ax=individual_cbar_ax)
 
+            for ax in model_axs[:-1, :].flatten():
+                ax.set_xticklabels([])
+                ax.set_xlabel('')
+                ax.get_xaxis().set_visible(False)
+
+            for ax in model_axs[:, 1:].flatten():
+                ax.set_yticklabels([])
+                ax.set_ylabel('')
+                ax.get_yaxis().set_visible(False)
+
             individual_fig.savefig(os.path.join(output_dir,
                                                 f"{well}_{case}_{model_class}_heatmap"))
-        # for ax in model_axs.flatten():
-            # ax.xaxis.set_visible(False)
-            # ax.yaxis.set_visible(False)
         fig.savefig(os.path.join(output_dir,
                                  f"{well}_heatmaps"))
         fig.clf()
@@ -683,6 +714,7 @@ def map_func(model_class, case, params_df, args, output_dir, protocol_dict,
                  'fitting_protocol': f_p, 'validation_protocol': v_p, 'RMSE':
                  np.random.uniform(3e2, 1e4)} for v_p in protocols for f_p in
                 protocols for well in ['Z01', 'Z02', 'Z03']]
+
         prediction_df = pd.DataFrame.from_records(rows)
         prediction_df['n_score'] = prediction_df['RMSE']
 
@@ -942,7 +974,8 @@ def do_heatmap(ax, model_class, fitting_case, params_df, subtraction_df,
     mean_validation_score = sub_df[sub_df.fitting_protocol != sub_df.validation_protocol]['n_score'].values.astype(np.float64).mean()
 
     ax.set_title(r'$\mathcal{E}_{\mathrm{fit}} = $' f"{mean_training_score:.2f}" + \
-    ",\n" r'$\mathcal{E}_{\mathrm{predict}} = $' + f"{mean_validation_score:.2f}")
+                 ',\n' r'$\mathcal{E}_{\mathrm{predict}} = $' + f"{mean_validation_score:.2f}",
+                 fontsize=args.fontsize)
 
     hm = sns.heatmap(pivot_df, ax=ax, square=True, norm=norm,
                      cmap=cmap, **kws)
@@ -981,7 +1014,7 @@ def setup_grid(fig, args):
     no_columns = 1 + no_cases
 
     gs = GridSpec(no_rows, no_columns, figure=fig, height_ratios=[.075] + [1] *
-                  no_models + [0.075], width_ratios=[.075] + no_cases*[1])
+                  no_models + [0.05], width_ratios=[.1] + no_cases*[1])
 
     model_label_axs = [fig.add_subplot(gs[i, 0]) for i in range(1, no_rows - 1)]
     case_label_axs = [fig.add_subplot(gs[0, i]) for i in range(1, no_columns)]
@@ -999,16 +1032,14 @@ def setup_grid(fig, args):
     for i, (label_ax, model_label) in enumerate(zip(model_label_axs, args.model_classes)):
         label = relabel_models_dict[model_label]
         label_ax.text(.5, .5, label, horizontalalignment='center',
-                      verticalalignment='center')
-
-    case_labels = ['Case I', 'Case II', 'Case III']
+                      verticalalignment='center', fontweight='bold')
 
     case_labels = [relabel_case_dict[case] for case in args.cases]
 
     for i, (label_ax, case_label) in enumerate(zip(case_label_axs, case_labels)):
         case_label = case_labels[i]
         label_ax.text(.5, .5, case_label, horizontalalignment='center',
-                      verticalalignment='center')
+                      verticalalignment='center', fontweight='bold')
 
     for ax in model_label_axs + case_label_axs:
         ax.set_axis_off()
