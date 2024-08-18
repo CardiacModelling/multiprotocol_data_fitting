@@ -24,7 +24,27 @@ python3 -m pip install -r requirements.txt
 
 
 ## Running
-Fitting was performed using `scripts/fit_all_wells_and_protocols.py` which can be provided with the  `-w`, `--sweeps` `--protocols` command to select specific data traces to fit. This fitting is performed on data postprocessed by the [pcpostprocess](https://github.com/CardiacModelling/pcpostprocess) package.
+Data can be downloaded through FigShare by running
+```
+wget https://figshare.com/ndownloader/files/48628150 -O 25112022_MW1_FF.tar.xz
+wget https://figshare.com/ndownloader/files/48632359 -O 25112022_MW_FF_processed.tar.xz
+```
+
+The data tarballs can then be extracted by running
+
+```
+tar xvf 25112022_MW1_FF.tar.xz -C data
+tar xvf 25112022_MW_FF_processed.tar.xz -C data
+```
+
+
+Similarly, the HPC model fits can be downloaded and extracted by running
+```
+wget https://figshare.com/ndownloader/files/48634114 -O 25112022MW_fitting.tar.xz
+tar xvf 25112022MW_fitting.tar.xz -c data
+```
+
+Fitting was performed using `scripts/fit_all_wells_and_protocols.py` which can be provided with the  `-w`, `--sweeps` `--protocols` command to select specific data traces to fit. The `--experiment_name`` flag should be set to 25112022_MW`. This fitting is performed on data postprocessed by the [pcpostprocess](https://github.com/CardiacModelling/pcpostprocess) package. The exact command line parameters used for each instance are found in the `info.txt` folders in the subdirectories of 25112022MW_fitting. As are the SLURM scripts used, and command-line output.
 
 The list of figures in the paper and the scripts that are run to produce them are shown in the table below. Some of these figures were produced using `pcpostprocess`.
 
