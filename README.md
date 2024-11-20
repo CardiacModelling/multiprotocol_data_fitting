@@ -9,7 +9,7 @@ Running this code requires an installation of python 3 and the [markovmodels](ht
 It is recommended to install libraries and run scripts in a virtual environment to avoid version conflicts between different projects. First, clone the repository.
 
 ```
-git clone https://github.com/CardiacModelling/evaluating_predictive_accuracy
+git clone https://github.com/CardiacModelling/multiprotocol_data_fitting
 ```
 
 Then, ensure that your `pip` installation is up to date.
