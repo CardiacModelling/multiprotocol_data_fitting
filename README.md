@@ -1,5 +1,5 @@
 # Fitting real multiprotocol data
-This repository contains the code necessary to reproduce the results and figures in [Evaluating the predictive accuracy of ion-channel models using data from multiple experimental designs](https://google.co.uk).
+This repository contains the code necessary to reproduce the results and figures in Shuttleworth et al. [Evaluating the predictive accuracy of ion-channel models using data from multiple experimental designs](https://doi.org/10.1101/2024.08.16.608289).
 
 ## Requirements
 Running this code requires an installation of python 3 and the [markovmodels](https://github.com/CardiacModelling/MarkovModels) package. The code in this repository has been tested on MacOS where the requisite packages have been installed using [micromamba](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html).
