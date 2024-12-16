@@ -83,12 +83,12 @@ def main():
     parser.add_argument('--ignore_validation_protocols', nargs='+', default=[], type=str)
     parser.add_argument('--ignore_fitting_protocols', nargs='+', default=['longap'], type=str)
     parser.add_argument('--ignore_wells', nargs='+', default=['M06'], type=str)
-    parser.add_argument('--fontsize', type=int)
+    parser.add_argument('--fontsize', type=int, default=8)
     parser.add_argument('-w', '--wells', type=str, nargs='+')
     parser.add_argument('--removal_duration', type=float, default=5.0)
     parser.add_argument('--experiment_name', '-e', default='newtonrun4')
     parser.add_argument('--validation_protocols', default=['longap'], nargs='+')
-    parser.add_argument('--figsize', '-f', nargs=2, type=float, default=[5.54, 8])
+    parser.add_argument('--figsize', '-f', nargs=2, type=float, default=[5.54, 8.1])
     parser.add_argument('--fig_title', '-t', default='')
     parser.add_argument('--nolegend', action='store_true')
     parser.add_argument('--dpi', '-d', default=500, type=int)
@@ -246,7 +246,7 @@ def main():
         # Compare best and worst wells
         fig.clf()
         # axs = fig.subplots(1, 3, width_ratios=[1, 1, 0.1])
-        heatmap_axs, prediction_axs, voltage_axs  = setup_best_worst_fig(fig)
+        heatmap_axs, prediction_axs, voltage_axs  = setup_best_worst_fig(fig, case)
         best_ax, worst_ax, cbar_ax = heatmap_axs
 
         if case in ['I', 'II', '0d'] or args.use_raw_data:
@@ -268,7 +268,7 @@ def main():
 
         best_well_predictions = prediction_df[prediction_df.well == worst_well].copy()
         best_prediction = best_well_predictions.groupby(['fitting_protocol', 'validation_protocol',
-                                                         'fitting_sweep', 'prediction_sweep'])['n_score'].agg('max').idxmin()
+                                                         'fitting_sweep', 'prediction_sweep'])['n_score'].agg('min').idxmin()
 
         fitting_protocol, validation_protocol, fit_sweep, predict_sweep\
             = worst_prediction
@@ -305,14 +305,22 @@ def main():
 
             voltage_axs[0].plot(times * 1e-3, Vcmd, color='black', lw=1)
             params_df = results_dict[model_class][case].copy()
-            worst_pred, _ = make_prediction(model_class, args, worst_well,
-                                            validation_protocol, predict_sweep,
-                                            fitting_protocol, fit_sweep, params_df,
-                                            subtraction_df.copy(), case,
-                                            args.reversal, protocol_dict,
-                                            worst_data, Vcmd,
-                                            label=data_label,
-                                            return_states=True )
+            worst_pred, states = make_prediction(model_class, args, worst_well,
+                                                 validation_protocol, predict_sweep,
+                                                 fitting_protocol, fit_sweep, params_df,
+                                                 subtraction_df.copy(), case,
+                                                 args.reversal, protocol_dict,
+                                                 worst_data, Vcmd,
+                                                 label=data_label,
+                                                 return_states=True )
+
+            if case in ['II']:
+                Vm = states[:, -1].flatten()
+            else:
+                E_rev = subtraction_df.set_index(['protocol', 'well', 'sweep']).loc[validation_protocol, worst_well, int(predict_sweep)]['E_rev'].astype(np.float64)
+                Voff = args.reversal - E_rev
+                Vm = Vcmd + Voff
+            voltage_axs[0].plot(times*1e-3, Vm)
 
             prediction_axs[0].plot(times * 1e-3, worst_data, alpha=.5, color='red',
                                    lw=.6)
@@ -373,7 +381,7 @@ def main():
                                                         fit_sweep))
 
             params_df = results_dict[model_class][case].copy()
-            best_pred, _ = make_prediction(model_class, args, best_well,
+            best_pred, states = make_prediction(model_class, args, best_well,
                                            validation_protocol, predict_sweep,
                                            fitting_protocol, fit_sweep, params_df,
                                            subtraction_df.copy(), case,
@@ -391,6 +399,14 @@ def main():
             fitting_protocol_i = _protocol_order.index(fitting_protocol) + int(fit_sweep)
             validation_protocol_i = _protocol_order.index(validation_protocol) + len(args.validation_protocols) + int(predict_sweep)
 
+            if case in ['II']:
+                Vm = states[:, -1].flatten()
+            else:
+                E_rev = subtraction_df.set_index(['protocol', 'well', 'sweep']).loc[validation_protocol, worst_well, int(predict_sweep)]['E_rev'].astype(np.float64)
+                Voff = args.reversal - E_rev
+                Vm = Vcmd + Voff
+
+            voltage_axs[1].plot(times*1e-3, Vm)
             for protocol in args.validation_protocols:
                 if validation_protocol_i > protocol_order.index(protocol):
                     validation_protocol_i -= 1
@@ -454,8 +470,8 @@ def main():
         fig.align_ylabels(list(prediction_axs) + list(voltage_axs) \
                           + [best_ax])
 
-        voltage_axs[0].set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
-        voltage_axs[1].set_ylabel(r'$V_\mathrm{cmd}$ (mV)')
+        voltage_axs[0].set_ylabel(r'$V$ (mV)')
+        voltage_axs[1].set_ylabel(r'$V$ (mV)')
 
         fig.savefig(os.path.join(output_dir, f"best_worst_{case}_{model_class}_heatmap"))
         fig.clf()
@@ -488,6 +504,7 @@ def main():
         individual_ax, individual_cbar_ax = individual_fig.subplots(1, 2, width_ratios=[1, 0.1])
         individual_cbar_kws = cbar_kws.copy()
         individual_cbar_kws['orientation'] = 'vertical'
+        individual_cbar_kws['fraction'] = '0.15'
 
         # Do heatmap on individual plot with heatmap
         do_heatmap(individual_ax, model_class, case, sub_df, subtraction_df,
@@ -830,8 +847,8 @@ def get_protocol_label(protocol_order, protocol, sweep):
                       if prot not in ['staircaseramp1_sweep2',
                                       'staircaseramp1_2_sweep2']]
 
-    prot_index = protocol_order.index(protocol)
-    ret_str = r'$d_{' + str(protocol_order.index(protocol) + 1) \
+    prot_index = protocol_order.index(p_protocol)
+    ret_str = r'$d_{' + str(prot_index + 1) \
         + r'}'
     if p_protocol == 'staircaseramp1':
         ret_str += r'^{(' + str(sweep) + r')}$'
@@ -1064,7 +1081,7 @@ def setup_grid_single_case(fig, args):
     return model_axs, colour_bar_ax
 
 
-def setup_best_worst_fig(fig):
+def setup_best_worst_fig(fig, case):
     no_models = len(args.model_classes)
     no_columns = 3
     no_rows = 5
@@ -1078,7 +1095,10 @@ def setup_best_worst_fig(fig):
     voltage_axs = [fig.add_subplot(gs[0, :]), fig.add_subplot(gs[2, :])]
 
     for ax in prediction_axs:
-        ax.set_ylabel(r'$I_\mathrm{Kr} (pA)$')
+        if case in ['0d', 'II']:
+            ax.set_ylabel(r'$I_\mathrm{out}\, (pA)$')
+        else:
+            ax.set_ylabel(r'$I_\mathrm{Kr}\, (pA)$')
 
     prediction_axs[-1].set_xlabel(r'$t$ (ms)')
 

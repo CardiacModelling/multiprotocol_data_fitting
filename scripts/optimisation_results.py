@@ -21,16 +21,15 @@ from matplotlib import rc
 
 import markovmodels
 from markovmodels.model_generation import make_model_of_class
-from markovmodels.fitting import get_best_params, infer_reversal_potential, make_prediction
+from markovmodels.fitting import get_best_params, infer_reversal_potential, make_prediction, adjust_kinetics
 from markovmodels.ArtefactModel import ArtefactModel, no_artefact_parameters
 from markovmodels.utilities import setup_output_directory, get_data, get_all_wells_in_directory
 from markovmodels.voltage_protocols import get_protocol_list, make_voltage_function_from_description
 from markovmodels.voltage_protocols import remove_spikes, detect_spikes
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-cutoff_threshold = 1.01
 
-mpl.rcParams['axes.formatter.useoffset'] = False
+mpl.rcParams['axes.formatter.useoffset'] = True
 
 # rc('text', usetex=True)
 # rc('figure', dpi=400, facecolor=[0]*4)
@@ -85,7 +84,7 @@ def main():
     parser.add_argument('--protocols', type=str, nargs='+')
     parser.add_argument('-w', '--wells', type=str, nargs='+')
     parser.add_argument('-s', '--sweeps', type=int, nargs='+')
-    parser.add_argument('--figsize', '-f', nargs=2, type=float, default=[5.3, 8])
+    parser.add_argument('--figsize', '-f', nargs=2, type=float, default=[5.3, 7.5])
     parser.add_argument('--fig_title', '-t', default='')
     parser.add_argument('--nolegend', action='store_true')
     parser.add_argument('--dpi', '-d', default=500, type=int)
@@ -95,10 +94,14 @@ def main():
     parser.add_argument('--no_voltage', action='store_true')
     parser.add_argument('--file_format', default='')
     parser.add_argument('--reversal', default=-91.71, type=float)
+    parser.add_argument('--cutoff_threshold', default=1.01, type=float)
     parser.add_argument('--output')
 
     global args
     args = parser.parse_args()
+
+    global cutoff_threshold
+    cutoff_threshold = args.cutoff_threshold
 
     output_dir = setup_output_directory(args.output, 'chapter_4_optimisation_results')
 
@@ -143,6 +146,8 @@ def main():
         args.infer_reversal_potential = False
         args.use_artefact_model = True
         args.data_label = 'before'
+
+    subtraction_df = pd.read_csv(args.subtraction_df)
 
     if args.fontsize:
         matplotlib.rcParams.update({'font.size': args.fontsize})
@@ -335,9 +340,8 @@ def do_trace_plots(current_ax, protocol_ax, occupations_ax,
     times_fname = os.path.join(args.data_dir,
                                f"{args.experiment_name}-{protocol}-times.csv")
     times = np.loadtxt(times_fname).flatten()
-    trace = np.loadtxt(data_fname).flatten()
 
-    current, vp = get_data(well, protocol, args.data_dir, args.experiment_name,
+    trace, vp = get_data(well, protocol, args.data_dir, args.experiment_name,
                            sweep=sweep, label=args.data_label)
 
     desc = vp.get_all_sections()
@@ -353,7 +357,7 @@ def do_trace_plots(current_ax, protocol_ax, occupations_ax,
     pred, states = make_prediction(args.model_class, args, well, protocol, sweep,
                                    protocol, sweep, params_df, subtraction_df,
                                    args.fitting_case, args.reversal, protocol_dict,
-                                   current, voltages, label=args.data_label,
+                                   trace, voltages, label=args.data_label,
                                    return_states=True
                                    )
 
@@ -362,6 +366,10 @@ def do_trace_plots(current_ax, protocol_ax, occupations_ax,
         model = ArtefactModel(model)
 
     states, state_labels = model.compute_all_states(states)
+
+    s_state_labels = sorted(state_labels)
+    reorder_indices = [s_state_labels.index(s) for s in state_labels]
+    states = states[:, reorder_indices].copy()
 
     # Hacky way of ensuring that the O state is at the bottom
     open_state_labels = ['O_O2', 'O1_O2', 'O']
@@ -411,8 +419,8 @@ def do_trace_plots(current_ax, protocol_ax, occupations_ax,
     current_ax.plot(times*1e-3, pred, alpha=.5, lw=.8)
     current_ax.set_xlabel('')
 
-    if args.fitting_case in ['0a', '0b']:
-        current_ax.set_ylabel(r'$I_\mathrm{obs} - I_\mathrm{L}$ (pA)')
+    if args.fitting_case in ['0a', '0b', '0c']:
+        current_ax.set_ylabel(r'$I_\mathrm{Kr}$ (pA)')
     else:
         current_ax.set_ylabel(r'$I_\mathrm{obs}$ (pA)')
 
@@ -423,17 +431,30 @@ def do_trace_plots(current_ax, protocol_ax, occupations_ax,
         pred, states = make_prediction(args.model_class, args, well, protocol, sweep,
                                    protocol, sweep, params_df, subtraction_df,
                                    args.fitting_case, args.reversal, protocol_dict,
-                                   current, voltages, label=args.data_label,
+                                   trace, voltages, label=args.data_label,
                                    return_states=True
                                    )
         Vm = states[:, -1]
         protocol_ax.plot(times*1e-3, Vm, label=r'$V_\mathrm{m}$')
+    elif args.fitting_case == '0d':
+        E_obs = infer_reversal_potential(desc, trace, times,
+                                         voltages=voltages)
+        V_off = args.reversal - E_obs
+        Vm = voltages + V_off
+        protocol_ax.plot(times*1e-3, Vm, label=r'$V_\mathrm{m}$')
+
     else:
         protocol_ax.set_ylabel(r'$V_\text{cmd}$ (mV)')
     protocol_ax.set_xlabel('$t$ (ms)')
 
 
 def do_scatter_plot(scatter_ax, params_df, well, protocol, sweep, args):
+
+    subtraction_df = pd.read_csv(args.subtraction_df)
+    if args.adjust_kinetics:
+        params_df = adjust_kinetics(args.model_class, params_df,
+                                    subtraction_df, args.reversal, args.reversal).copy()
+
     param_labels = make_model_of_class(args.model_class).get_parameter_labels()
     params_df = params_df[(params_df.well == well)
                           & (params_df.protocol == protocol)
@@ -483,7 +504,7 @@ def do_scatter_plot(scatter_ax, params_df, well, protocol, sweep, args):
 
         if xlims[0] != xlims[1] and ylims[0] != ylims[1]:
             inset_ax = inset_axes(scatter_ax,
-                                width="50%",
+                                width="40%",
                                 height="40%",
             )
 
@@ -530,6 +551,8 @@ def do_scatter_plot(scatter_ax, params_df, well, protocol, sweep, args):
             inset_ax.set_xticks(xticks)
             inset_ax.set_yticks(yticks)
 
+            inset_ax.tick_params(axis='x', labelrotation=0)
+
             mark_inset(scatter_ax, inset_ax, 2, 3, alpha=.25)
 
     else:
@@ -552,7 +575,7 @@ def do_profile_plots(baseline_profile_ax, params_df, protocol, well, sweep, args
     prot_func = make_voltage_function_from_description(desc)
 
     times = np.loadtxt(times_fname).flatten().astype(np.float64)
-    voltages = np.array([prot_func(t) for t in times])
+    voltages = np.array([prot_func(t, protocol_description=desc) for t in times])
 
     assert(np.all(np.isfinite(voltages)))
 
@@ -560,13 +583,35 @@ def do_profile_plots(baseline_profile_ax, params_df, protocol, well, sweep, args
     _, _, indices = remove_spikes(times, voltages, spike_times,
                                   args.removal_duration)
 
+    row = subtraction_df[(subtraction_df.well == well) & (subtraction_df.protocol == protocol)
+                            & (subtraction_df.sweep == sweep)].iloc[0]
+    gleak, Eleak = row[['gleak_before', 'E_leak_before']].values.flatten().astype(np.float64)
+    gleak = float(gleak)
+    Eleak = float(Eleak)
+    I_leak = gleak * (voltages - Eleak)
+
     if not args.infer_reversal_potential:
         E_rev = args.E_rev
     elif not args.use_artefact_model:
-        E_rev = infer_reversal_potential(desc, trace, times,
-                                         voltages=voltages)
+        E_rev = subtraction_df[(subtraction_df.well == well) & (subtraction_df.protocol == protocol)
+                               & (subtraction_df.sweep == sweep)].iloc[0]['E_rev']
+        E_rev = float(E_rev)
     else:
         assert(False)
+
+    m_model = make_model_of_class(args.model_class, E_rev=E_rev)
+
+    if args.use_artefact_model:
+        model = ArtefactModel(m_model)
+    else:
+        model = m_model
+
+    default_params = model.get_default_parameters()
+
+    best_params = get_best_params(params_df)
+    row = best_params.set_index(['well', 'protocol', 'sweep']).loc[(well, protocol, sweep)]
+    param_labels = model.get_parameter_labels()
+    params = row[param_labels].values.flatten().astype(np.float64)
 
     if args.default_parameters_file:
         default_parameters = np.loadtxt(os.path.join(args.default_parameters_file))
@@ -575,8 +620,14 @@ def do_profile_plots(baseline_profile_ax, params_df, protocol, well, sweep, args
                                       default_parameters=default_parameters,
                                       times=times, E_rev=E_rev)
     else:
+        if args.use_artefact_model:
+            channel_model_params = params[:-no_artefact_parameters].copy()
+        else:
+            channel_model_params = params.copy()
+
         m_model = make_model_of_class(args.model_class, voltage=prot_func,
                                       protocol_description=desc,
+                                      default_parameters=channel_model_params,
                                       times=times, E_rev=E_rev)
 
     if args.use_artefact_model:
@@ -584,12 +635,6 @@ def do_profile_plots(baseline_profile_ax, params_df, protocol, well, sweep, args
     else:
         model = m_model
 
-    best_params = get_best_params(params_df)
-    row = best_params.set_index(['well', 'protocol', 'sweep']).loc[(well, protocol, sweep)]
-    param_labels = model.get_parameter_labels()
-    params = row[param_labels].values.flatten().astype(np.float64)
-
-    default_params = model.get_default_parameters()
     default_params[m_model.GKr_index] = params[m_model.GKr_index]
 
     if args.use_artefact_model:
@@ -597,31 +642,19 @@ def do_profile_plots(baseline_profile_ax, params_df, protocol, well, sweep, args
 
     if args.fitting_case in ['0a', '0b', '0d']:
         solver = model.make_hybrid_solver_current(hybrid=False,
-                                                  strict=True,
+                                                  strict=False,
                                                   njitted=False)
     else:
         solver = model.make_hybrid_solver_current(hybrid=False,
-                                                  strict=True,
+                                                  strict=False,
                                                   njitted=False,
                                                   return_var='I_out')
 
-    row = subtraction_df[(subtraction_df.well == well) & (subtraction_df.protocol == protocol)
-                            & (subtraction_df.sweep == sweep)].iloc[0]
-    gleak, Eleak = row[['gleak_before', 'E_leak_before']]
-    gleak = float(gleak)
-    Eleak = float(Eleak)
-
-    I_leak = gleak * (voltages - Eleak)
-
     def compute_rmse(p):
-        if np.any(p <= 0) and not args.use_artefact_model:
-            return np.nan
-        elif args.use_artefact_model and np.any(p[:-no_artefact_parameters] <= 0):
-            return np.na
-
-        y = solver(p, times=times, protocol_description=desc)
+        y = solver(p.flatten(), times=times, protocol_description=desc,
+                   E_rev=E_rev)
         if args.fitting_case == '0d':
-            y = y + I_leak
+            y = y.flatten() + I_leak.flatten()
 
         return np.sqrt(np.mean((y[indices] - trace[indices])**2))
 
@@ -638,8 +671,10 @@ def do_profile_plots(baseline_profile_ax, params_df, protocol, well, sweep, args
     baseline_profile_ax.axvline(0, color='grey')
     baseline_profile_ax.axvline(1.0, color='grey')
 
-    baseline_profile_ax.set_xlabel(r'$\lambda$')
-    baseline_profile_ax.set_yscale('log')
+    profile_plotted = np.any(np.isfinite(scores))
+    if profile_plotted:
+        baseline_profile_ax.set_xlabel(r'$\lambda$')
+        baseline_profile_ax.set_yscale('log')
 
 
 def setup_grid(fig):

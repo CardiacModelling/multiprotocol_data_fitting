@@ -1,12 +1,15 @@
 import argparse
+import itertools
 import os
+import pints
+import scipy
 
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import pints
+import statsmodels.api as sm
 from matplotlib.gridspec import GridSpec
 
 import markovmodels
@@ -26,6 +29,18 @@ def create_axes(fig, no_rows):
         return [fig.subplots(no_rows)]
 
 
+for model in ['model3', 'model2', 'model10', 'Wang']:
+    print(make_model_of_class(model).get_parameter_labels())
+
+param_labels_replace = {
+    'model3': [r'$p_{' + str(p[1:]) + r'}$' for p in make_model_of_class('model3').get_parameter_labels()],
+    'model10': [r'$p_{' + str(p[1:]) + r'}$' for p in make_model_of_class('model10').get_parameter_labels()],
+    'model2': [r'$p_{' + str(p[1:]) + r'}$' for p in make_model_of_class('model10').get_parameter_labels()],
+    'Wang': [r'$q_7$', r'$q_8$', r'$q_1$', r'$q_2$', r'$k_b$', r'$q_9$', r'$q_{10}$', r'$q_5$',
+             r'$q_6$', r'$q_3$', r'$q_4$', r'$q_{11}$', r'$q_{12}$', r'$k_f$', r'$g$']
+    }
+
+
 def main():
     description = ""
     parser = argparse.ArgumentParser(description=description)
@@ -38,6 +53,7 @@ def main():
     parser.add_argument("--vmax", "-m", default=None, type=float)
     parser.add_argument("--model", default='Beattie')
     parser.add_argument("--figsize", default=(5.3, 7), nargs=2, type=float)
+    parser.add_argument("--qq_figsize", default=(5.3, 5), nargs=2, type=float)
     parser.add_argument('--experiment_name', default='newtonrun4', type=str)
     parser.add_argument('--removal_duration', '-r', default=5, type=float)
     parser.add_argument('--reversal', type=float, default=np.nan)
@@ -62,6 +78,8 @@ def main():
 
     global param_labels
     param_labels = make_model_of_class(args.model).get_parameter_labels()
+    pretty_param_labels = param_labels_replace[args.model]
+    print(list(zip(param_labels, pretty_param_labels)))
 
     chrono_fname = args.chrono_file
     with open(chrono_fname, 'r') as fin:
@@ -138,7 +156,42 @@ def main():
     params_df = params_df.drop(param_labels[-1], axis='columns')
     param_labels = param_labels[:-1]
 
-    beta, ll = do_multivariate_regression(params_df, param_labels)
+    beta, ll, residuals = do_multivariate_regression(params_df, param_labels)
+
+    # Do residual QQ plot
+    QQ_fig = plt.figure(figsize=args.qq_figsize, constrained_layout=True)
+    QQ_ax = QQ_fig.subplots()
+
+    QQ_ax.spines[['top', 'right']].set_visible(False)
+
+    print(residuals.shape)
+    markers = itertools.cycle(('.', ',', 'x', '1', '2', '3', '4', 'v', '^', 'p', 'P'))
+    palette = itertools.cycle(sns.color_palette('husl', residuals.shape[1]))
+
+    for i in range(residuals.shape[1]):
+        color = next(palette)
+        sm.qqplot(residuals[:, i],
+                  dist=scipy.stats.norm, fit=True, line=None, ax=QQ_ax, markerfacecolor=color, markersize=2.5,
+                  markeredgecolor=color, marker=next(markers), label=pretty_param_labels[i]
+                  )
+
+    xlims = QQ_ax.get_xlim()
+    ylims = QQ_ax.get_ylim()
+
+    lims = np.vstack([xlims, ylims])
+    lims = [np.max(lims[:, 0]), np.min(lims[:, 1])]
+
+    plot_points = np.linspace(lims[0], lims[1], 2)
+    QQ_ax.plot(plot_points, plot_points, linestyle='--', color='grey', alpha=.4)
+
+    QQ_ax.legend()
+    handles, labels = QQ_ax.get_legend_handles_labels()
+    # sort both labels and handles by labels
+    labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
+    QQ_ax.legend(handles, labels, ncol=2)
+
+    QQ_fig.savefig(os.path.join(output_dir, 'QQ_plot'))
+    plt.close(QQ_fig)
 
     with np.printoptions(threshold=np.inf):
         print(f"log likelihood is {ll}")
@@ -146,8 +199,8 @@ def main():
     no_protocols = len(params_df.protocol.unique())
     no_wells = len(params_df.well.unique())
 
-    beta_p, ll_p = do_multivariate_regression(params_df, param_labels, no_well_effect=True)
-    beta_w, ll_w = do_multivariate_regression(params_df, param_labels, no_protocol_effect=True)
+    beta_p, ll_p, _ = do_multivariate_regression(params_df, param_labels, no_well_effect=True)
+    beta_w, ll_w, _ = do_multivariate_regression(params_df, param_labels, no_protocol_effect=True)
 
     params = params_df[param_labels].values
     residuals = params - params.mean(axis=0)
@@ -155,7 +208,7 @@ def main():
 
     n_estimates = params_df.values.shape[0]
 
-    _, ll_no_effects =  do_multivariate_regression(params_df, param_labels,
+    _, ll_no_effects, _ =  do_multivariate_regression(params_df, param_labels,
                                                    no_protocol_effect=True,
                                                    no_well_effect=True)
 
@@ -213,9 +266,9 @@ def main():
     marker_dict = {p: markers[i] for i, p in enumerate(params_df.protocol.unique())}
     markers = [marker_dict[p] for p in params_df.protocol]
 
-    # Do pairplot
-    sns.pairplot(data=params_df, hue=args.hue, vars=param_labels)
-    plt.savefig(os.path.join(output_dir, 'pairplot.pdf'))
+    # # Do pairplot
+    # sns.pairplot(data=params_df, hue=args.hue, vars=param_labels)
+    # plt.savefig(os.path.join(output_dir, 'pairplot.pdf'))
 
     fig = plt.figure(figsize=args.figsize, constrained_layout=True)
     axs = fig.subplots(2)
@@ -271,11 +324,16 @@ def do_coloured_scatterplots(params_df, p1, p2):
     sns.scatterplot(params_df, x=p1, y=p2, legend=False, ax=all_ax)
     # all_ax.set_title('well')
 
-    sns.scatterplot(params_df, x=p1, y=p2, hue='well', legend=False, ax=well_ax)
-    well_ax.set_title('coloured by well')
+    sns.scatterplot(params_df, x=p1, y=p2, hue='well', style='well',
+                    legend=False, ax=well_ax)
+    well_ax.set_title('categorised by well')
+    well_ax.set_title('a', loc='left', fontweight='bold')
 
-    sns.scatterplot(params_df, x=p1, y=p2, hue='protocol', legend=False, ax=protocol_ax)
-    protocol_ax.set_title('coloured by protocol')
+    sns.scatterplot(params_df, x=p1, y=p2, hue='protocol',
+                    style='protocol',legend=False, ax=protocol_ax)
+
+    protocol_ax.set_title('categorised by protocol')
+    protocol_ax.set_title('b', loc='left', fontweight='bold')
 
     for ax in axs:
         ax.set_xlabel(f"{convert_to_latex(p1)} ({units[p1]})")
@@ -447,6 +505,7 @@ def do_multivariate_regression(params_df, param_labels,
         ts = make_model_of_class(args.model).transformations
         for i, t in enumerate(ts[:-1]):
             if type(t) is pints.LogTransformation:
+                print(param_labels[i])
                 params_df[param_labels[i]] = np.log10(params_df[param_labels[i]])
 
     X, Y = setup_linear_model_coding(params_df, param_labels,
@@ -476,7 +535,7 @@ def do_multivariate_regression(params_df, param_labels,
     for i in range(len(param_labels)):
         log_likelihood += - (n / 2.0) *  np.log(2*np.pi*sigma_ests[i]**2) - (1.0/(2*sigma_ests[i]**2)) * np.sum(residuals[:, i]**2)
 
-    return beta, log_likelihood
+    return beta, log_likelihood, residuals
 
 
 def setup_linear_model_coding(params_df, param_labels,
