@@ -1,1 +1,2 @@
-markovmodels @ git+https://github.com/joeyshuttleworth/MarkovModels@19aeaf9
+syncropatch_export @ git+https://github.com/CardiacModelling/syncropatch_export
+markovmodels @ git+https://github.com/joeyshuttleworth/MarkovModels@c812765
